@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic/decoder"
+	"github.com/bytedance/sonic/encoder"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -57,7 +59,10 @@ var (
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 
 	// cache
-	userMap   = sync.Map{}                                                                  // userの存在確認
+	userMap               = sync.Map{}
+	isuListByCharacterMux = sync.RWMutex{}
+	isuListByCharacter    = map[string][]Isu{}
+	// userの存在確認
 	iconCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) ([]byte, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
 		ids := strings.Split(jiaUserIsuUUID, "*")
 		jiaUserID, jiaIsuUUID := ids[0], ids[1]
@@ -72,7 +77,13 @@ var (
 
 		return image, nil
 	}, 2*time.Minute, 10*time.Minute)
-
+	isuExistCache = sc.NewMust(func(_ context.Context, jiaIsuUUID string) (bool, error) {
+		var count int
+		if err := db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID); err != nil {
+			return false, fmt.Errorf("cache db error: %w", err)
+		}
+		return count > 0, nil
+	}, 2*time.Minute, 10*time.Minute)
 	postIsuConditionMux  = sync.RWMutex{}
 	postIsuConditionArgs = make([]any, 0, 50000) // 1sごとにpostIsuConditionする
 )
@@ -238,6 +249,7 @@ func main() {
 	e.Logger.SetLevel(log.DEBUG)
 
 	echov4.Integrate(e)
+	setupJSONSerializer(e)
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -364,6 +376,17 @@ func postInitialize(c echo.Context) error {
 	for _, user := range users {
 		userMap.Store(user.JIAUserID, struct{}{})
 	}
+
+	// init isuListByCharacter
+	isuList := []Isu{}
+	err = db.Select(&isuList, "SELECT * FROM `isu`")
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	isuListByCharacter = lo.GroupBy(isuList, func(isu Isu) string {
+		return isu.Character
+	})
 
 	go func() {
 		for range time.Tick(500 * time.Millisecond) {
@@ -712,6 +735,10 @@ func postIsu(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	isuListByCharacterMux.Lock()
+	isuListByCharacter[isu.Character] = append(isuListByCharacter[isu.Character], isu)
+	isuListByCharacterMux.Unlock()
 
 	return c.JSON(http.StatusCreated, isu)
 }
@@ -1151,18 +1178,26 @@ func calculateConditionLevel(condition string) (string, error) {
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
-	isuList := []Isu{}
-	err := db.Select(&isuList, "SELECT * FROM `isu`")
+	isuConditions := []IsuCondition{}
+	err := db.Select(&isuConditions,
+		// isuごとに最新のコンディションを取得
+		"SELECT * FROM `isu_condition` `c1` WHERE `timestamp` = ("+
+			"	SELECT MAX(`timestamp`) FROM `isu_condition` `c2` WHERE `c1`.`jia_isu_uuid` = `c2`.`jia_isu_uuid`"+
+			")",
+	)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	isuListByCharacter := lo.GroupBy(isuList, func(isu Isu) string {
-		return isu.Character
+	isuConditionsMap := lo.SliceToMap(isuConditions, func(isuCondition IsuCondition) (string, IsuCondition) {
+		return isuCondition.JIAIsuUUID, isuCondition
 	})
 
 	res := []TrendResponse{}
+
+	isuListByCharacterMux.RLock()
+	defer isuListByCharacterMux.RUnlock()
 
 	for _, isuList := range isuListByCharacter {
 		character := isuList[0].Character
@@ -1171,18 +1206,8 @@ func getTrend(c echo.Context) error {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 		for _, isu := range isuList {
-			conditions := []IsuCondition{}
-			err = db.Select(&conditions,
-				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
-				isu.JIAIsuUUID,
-			)
-			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
-				return c.NoContent(http.StatusInternalServerError)
-			}
-
-			if len(conditions) > 0 {
-				isuLastCondition := conditions[0]
+			isuLastCondition, ok := isuConditionsMap[isu.JIAIsuUUID]
+			if ok {
 				conditionLevel, err := calculateConditionLevel(isuLastCondition.Condition)
 				if err != nil {
 					c.Logger().Error(err)
@@ -1247,20 +1272,12 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
-	tx, err := db.Beginx()
+	ok, err := isuExistCache.Get(c.Request().Context(), jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	defer tx.Rollback()
-
-	var count int
-	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
+	if !ok {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
 
@@ -1278,12 +1295,6 @@ func postIsuCondition(c echo.Context) error {
 	postIsuConditionMux.Lock()
 	postIsuConditionArgs = append(postIsuConditionArgs, args...)
 	postIsuConditionMux.Unlock()
-
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
 
 	return c.NoContent(http.StatusAccepted)
 }
@@ -1324,4 +1335,18 @@ func isValidConditionFormat(conditionStr string) bool {
 
 func getIndex(c echo.Context) error {
 	return c.File(frontendContentsPath + "/index.html")
+}
+
+type sonicJSONSerializer struct{}
+
+func (j *sonicJSONSerializer) Serialize(c echo.Context, i interface{}, _ string) error {
+	return encoder.NewStreamEncoder(c.Response()).Encode(i)
+}
+
+func (j *sonicJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+	return decoder.NewStreamDecoder(c.Request().Body).Decode(i)
+}
+
+func setupJSONSerializer(e *echo.Echo) {
+	e.JSONSerializer = &sonicJSONSerializer{}
 }
