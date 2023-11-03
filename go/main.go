@@ -237,6 +237,7 @@ func main() {
 	e.Logger.SetLevel(log.DEBUG)
 
 	echov4.Integrate(e)
+	setupJSONSerializer(e)
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
