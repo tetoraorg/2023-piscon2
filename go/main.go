@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic/decoder"
+	"github.com/bytedance/sonic/encoder"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -1311,4 +1313,18 @@ func isValidConditionFormat(conditionStr string) bool {
 
 func getIndex(c echo.Context) error {
 	return c.File(frontendContentsPath + "/index.html")
+}
+
+type sonicJSONSerializer struct{}
+
+func (j *sonicJSONSerializer) Serialize(c echo.Context, i interface{}, _ string) error {
+	return encoder.NewStreamEncoder(c.Response()).Encode(i)
+}
+
+func (j *sonicJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+	return decoder.NewStreamDecoder(c.Request().Body).Decode(i)
+}
+
+func setupJSONSerializer(e *echo.Echo) {
+	e.JSONSerializer = &sonicJSONSerializer{}
 }
