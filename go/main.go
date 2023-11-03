@@ -57,7 +57,7 @@ var (
 	// cache
 	userMap = sync.Map{} // userの存在確認
 
-	postIsuConditionMux  = sync.Mutex{}
+	postIsuConditionMux  = sync.RWMutex{}
 	postIsuConditionArgs = make([]any, 50000) // 1sごとにpostIsuConditionする
 )
 
@@ -349,6 +349,11 @@ func postInitialize(c echo.Context) error {
 
 	go func() {
 		for range time.Tick(1 * time.Second) {
+			postIsuConditionMux.RLock()
+			if len(postIsuConditionArgs) == 0 {
+				continue
+			}
+
 			query, args, err := sqlx.In(
 				"INSERT INTO `isu_condition`"+
 					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
@@ -360,13 +365,16 @@ func postInitialize(c echo.Context) error {
 			if err != nil {
 				c.Logger().Errorf("db error: %v", err)
 			}
+			postIsuConditionMux.RUnlock()
 
 			_, err = db.Exec(query, args...)
 			if err != nil {
 				c.Logger().Errorf("db error: %v", err)
 			}
 
+			postIsuConditionMux.Lock()
 			postIsuConditionArgs = make([]any, 50000)
+			postIsuConditionMux.Unlock()
 		}
 	}()
 
