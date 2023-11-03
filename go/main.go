@@ -1030,7 +1030,7 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 	if startTime.IsZero() {
 		err = db.Select(&conditions,
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
-				"	AND `timestamp` < ? AND IN (?)"+
+				"	AND `timestamp` < ? AND condition_level IN (?)"+
 				"	ORDER BY `timestamp` DESC LIMIT ?",
 			jiaIsuUUID, endTime, conditionLevelIn, limit,
 		)
@@ -1038,7 +1038,7 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 		err = db.Select(&conditions,
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
-				"	AND ? <= `timestamp` AND IN (?)"+
+				"	AND ? <= `timestamp` AND condition_level IN (?)"+
 				"	ORDER BY `timestamp` DESC LIMIT ?",
 			jiaIsuUUID, endTime, startTime, conditionLevelIn, limit,
 		)
