@@ -59,7 +59,7 @@ var (
 	// cache
 	userMap   = sync.Map{}                                                                  // userの存在確認
 	iconCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) ([]byte, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
-		ids := strings.Split(jiaUserIsuUUID, "_")
+		ids := strings.Split(jiaUserIsuUUID, "*")
 		jiaUserID, jiaIsuUUID := ids[0], ids[1]
 
 		var image []byte
@@ -732,7 +732,7 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	image, err := iconCache.Get(c.Request().Context(), jiaUserID+"_"+jiaIsuUUID)
+	image, err := iconCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusNotFound, "not found: isu")
