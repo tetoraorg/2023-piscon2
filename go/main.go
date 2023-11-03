@@ -56,9 +56,6 @@ var (
 
 	// cache
 	userMap = sync.Map{} // userの存在確認
-
-	postIsuConditionMux  = sync.Mutex{}
-	postIsuConditionArgs = make([]any, 50000) // 1sごとにpostIsuConditionする
 )
 
 type Config struct {
@@ -347,29 +344,6 @@ func postInitialize(c echo.Context) error {
 	for _, user := range users {
 		userMap.Store(user.JIAUserID, struct{}{})
 	}
-
-	go func() {
-		for range time.Tick(1 * time.Second) {
-			query, args, err := sqlx.In(
-				"INSERT INTO `isu_condition`"+
-					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-					"	VALUES "+
-					strings.Repeat("(?, ?, ?, ?, ?),", len(postIsuConditionArgs)/5-1)+
-					"(?, ?, ?, ?, ?)",
-				postIsuConditionArgs...,
-			)
-			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
-			}
-
-			_, err = db.Exec(query, args...)
-			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
-			}
-
-			postIsuConditionArgs = make([]any, 50000)
-		}
-	}()
 
 	go func() {
 		if _, err := http.Get("https://ras-pprotein.trap.show/api/group/collect"); err != nil {
@@ -1256,9 +1230,24 @@ func postIsuCondition(c echo.Context) error {
 		args = append(args, jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
 	}
 
-	postIsuConditionMux.Lock()
-	postIsuConditionArgs = append(postIsuConditionArgs, args...)
-	postIsuConditionMux.Unlock()
+	query, args, err := sqlx.In(
+		"INSERT INTO `isu_condition`"+
+			"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+			"	VALUES "+
+			strings.Repeat("(?, ?, ?, ?, ?),", len(req)-1)+
+			"(?, ?, ?, ?, ?)",
+		args...,
+	)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	_, err = tx.Exec(query, args...)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
 
 	err = tx.Commit()
 	if err != nil {
