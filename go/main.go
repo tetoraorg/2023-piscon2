@@ -15,6 +15,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dgrijalva/jwt-go"
@@ -51,6 +52,9 @@ var (
 	jiaJWTSigningKey *ecdsa.PublicKey
 
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
+
+	// cache
+	userMap = sync.Map{} // userの存在確認
 )
 
 type Config struct {
@@ -279,15 +283,7 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 	}
 
 	jiaUserID := _jiaUserID.(string)
-	var count int
-
-	err = db.Get(&count, "SELECT COUNT(*) FROM `user` WHERE `jia_user_id` = ?",
-		jiaUserID)
-	if err != nil {
-		return "", http.StatusInternalServerError, fmt.Errorf("db error: %v", err)
-	}
-
-	if count == 0 {
+	if _, ok := userMap.Load(jiaUserID); !ok {
 		return "", http.StatusUnauthorized, fmt.Errorf("not found: user")
 	}
 
@@ -332,6 +328,19 @@ func postInitialize(c echo.Context) error {
 	if err != nil {
 		c.Logger().Errorf("db error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	// init userMap
+	users := []struct {
+		JIAUserID string `db:"jia_user_id"`
+	}{}
+	err = db.Get(&users, "SELECT * FROM `user`")
+	if err != nil {
+		c.Logger().Errorf("db error : %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, user := range users {
+		userMap.Store(user.JIAUserID, struct{}{})
 	}
 
 	go func() {
@@ -380,11 +389,7 @@ func postAuthentication(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "invalid JWT payload")
 	}
 
-	_, err = db.Exec("INSERT IGNORE INTO user (`jia_user_id`) VALUES (?)", jiaUserID)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+	userMap.Store(jiaUserID, struct{}{})
 
 	session, err := getSession(c.Request())
 	if err != nil {
