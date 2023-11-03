@@ -8,7 +8,7 @@ sudo cp ./etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/50-se
 export PPROTEIN_GIT_REPOSITORY=""
 export GOROOT=""
 export GOPROXY=https://proxy.golang.org,direct
-cd ../go && go build -o isucondition
+cd ~/webapp/go && go build -o isucondition
 
 # log
 sudo chmod +r /var/log/mysql
