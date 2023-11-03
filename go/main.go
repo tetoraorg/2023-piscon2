@@ -19,8 +19,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/bytedance/sonic/decoder"
-	"github.com/bytedance/sonic/encoder"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -73,13 +71,6 @@ var (
 		}
 
 		return image, nil
-	}, 2*time.Minute, 10*time.Minute)
-	isuExistCache = sc.NewMust(func(_ context.Context, jiaIsuUUID string) (bool, error) {
-		var count int
-		if err := db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID); err != nil {
-			return false, fmt.Errorf("cache db error: %w", err)
-		}
-		return count > 0, nil
 	}, 2*time.Minute, 10*time.Minute)
 )
 
@@ -244,7 +235,6 @@ func main() {
 	e.Logger.SetLevel(log.DEBUG)
 
 	echov4.Integrate(e)
-	setupJSONSerializer(e)
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -1229,12 +1219,20 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
-	ok, err := isuExistCache.Get(c.Request().Context(), jiaIsuUUID)
+	tx, err := db.Beginx()
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	if !ok {
+	defer tx.Rollback()
+
+	var count int
+	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	if count == 0 {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
 
@@ -1249,13 +1247,26 @@ func postIsuCondition(c echo.Context) error {
 		args = append(args, jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
 	}
 
-	_, err = db.Exec("INSERT INTO `isu_condition`"+
-		"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-		"	VALUES "+
-		strings.Repeat("(?, ?, ?, ?, ?),", len(req)-1)+
-		"(?, ?, ?, ?, ?)",
+	query, args, err := sqlx.In(
+		"INSERT INTO `isu_condition`"+
+			"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+			"	VALUES "+
+			strings.Repeat("(?, ?, ?, ?, ?),", len(req)-1)+
+			"(?, ?, ?, ?, ?)",
 		args...,
 	)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	_, err = tx.Exec(query, args...)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
+	err = tx.Commit()
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1300,18 +1311,4 @@ func isValidConditionFormat(conditionStr string) bool {
 
 func getIndex(c echo.Context) error {
 	return c.File(frontendContentsPath + "/index.html")
-}
-
-type sonicJSONSerializer struct{}
-
-func (j *sonicJSONSerializer) Serialize(c echo.Context, i interface{}, _ string) error {
-	return encoder.NewStreamEncoder(c.Response()).Encode(i)
-}
-
-func (j *sonicJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
-	return decoder.NewStreamDecoder(c.Request().Body).Decode(i)
-}
-
-func setupJSONSerializer(e *echo.Echo) {
-	e.JSONSerializer = &sonicJSONSerializer{}
 }
