@@ -305,13 +305,14 @@ func main() {
 					continue
 				}
 				go func(args []any) {
+					fmt.Println(len(postIsuConditionArgs))
 					_, err = db.Exec(
 						"INSERT INTO `isu_condition`"+
 							"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
 							"	VALUES "+
-							strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
+							strings.Repeat("(?, ?, ?, ?, ?), ", len(args)/5-1)+
 							"(?, ?, ?, ?, ?)",
-						postIsuConditionArgs...,
+						args...,
 					)
 					if err != nil {
 						panic("db error: " + err.Error())
