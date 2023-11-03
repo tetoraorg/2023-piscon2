@@ -294,6 +294,7 @@ func main() {
 		return
 	}
 
+	go trendUpdateWorker()
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		for {
@@ -326,6 +327,30 @@ func main() {
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
+}
+
+var (
+	trendCache    = []TrendResponse{}
+	trendCacheMux = sync.RWMutex{}
+)
+
+func trendUpdateWorker() {
+	ticker := time.NewTicker(500 * time.Millisecond)
+	for {
+		select {
+		case <-ticker.C:
+			trendCacheMux.Lock()
+			trend, err := getTrendFromDB()
+			if err != nil {
+				// ここのエラーってどこに投げればいいんだ？
+				fmt.Println(err)
+				trendCacheMux.Unlock()
+				continue
+			}
+			trendCache = *trend
+			trendCacheMux.Unlock()
+		}
+	}
 }
 
 func getSession(r *http.Request) (*sessions.Session, error) {
@@ -1151,9 +1176,7 @@ func calculateConditionLevel(condition string) (string, error) {
 	return conditionLevel, nil
 }
 
-// GET /api/trend
-// ISUの性格毎の最新のコンディション情報
-func getTrend(c echo.Context) error {
+func getTrendFromDB() (*[]TrendResponse, error) {
 	isuConditions := []IsuCondition{}
 	err := db.Select(&isuConditions,
 		// isuごとに最新のコンディションを取得
@@ -1162,8 +1185,7 @@ func getTrend(c echo.Context) error {
 			")",
 	)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		return nil, err
 	}
 
 	isuConditionsMap := lo.SliceToMap(isuConditions, func(isuCondition IsuCondition) (string, IsuCondition) {
@@ -1186,8 +1208,7 @@ func getTrend(c echo.Context) error {
 			if ok {
 				conditionLevel, err := calculateConditionLevel(isuLastCondition.Condition)
 				if err != nil {
-					c.Logger().Error(err)
-					return c.NoContent(http.StatusInternalServerError)
+					return nil, err
 				}
 				trendCondition := TrendCondition{
 					ID:        isu.ID,
@@ -1223,6 +1244,15 @@ func getTrend(c echo.Context) error {
 			})
 	}
 
+	return &res, nil
+}
+
+// GET /api/trend
+// ISUの性格毎の最新のコンディション情報
+func getTrend(c echo.Context) error {
+	trendCacheMux.RLock()
+	res := trendCache
+	trendCacheMux.RUnlock()
 	return c.JSON(http.StatusOK, res)
 }
 
