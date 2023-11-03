@@ -24,4 +24,4 @@ sudo systemctl restart mysql.service
 sudo systemctl restart nginx.service
 sudo systemctl restart isucondition.go.service
 
-sudo mysql -uroot -e 'SET GLOBAL long_query_time = 0; SET GLOBAL slow_query_log = ON; SET GLOBAL slow_query_log_file = "/var/log/mysql/mysql-slow.log";'
+sudo mysql -uisucon -pisucon -e 'SET GLOBAL long_query_time = 0; SET GLOBAL slow_query_log = ON; SET GLOBAL slow_query_log_file = "/var/log/mysql/mysql-slow.log";'
