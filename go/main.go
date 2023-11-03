@@ -349,7 +349,7 @@ func postInitialize(c echo.Context) error {
 	}
 
 	go func() {
-		for range time.Tick(500 * time.Millisecond) {
+		for range time.Tick(1 * time.Second) {
 			postIsuConditionMux.RLock()
 			if len(postIsuConditionArgs) == 0 {
 				continue
