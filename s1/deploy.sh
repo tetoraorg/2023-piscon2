@@ -17,6 +17,7 @@ sudo touch /var/log/mysql/mysql-slow.log /var/log/nginx/access.log
 sudo chmod +r /var/log/mysql/mysql-slow.log /var/log/nginx/access.log /var/log/nginx/access.log
 sudo touch /var/log/mysql/mysql-slow.log /var/log/nginx/access.log
 sudo chmod +r /var/log/mysql/mysql-slow.log /var/log/nginx/access.log
+sudo chown mysql:mysql /var/log/mysql
 sudo chown mysql:mysql /var/log/mysql/mysql-slow.log
 
 
