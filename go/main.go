@@ -1026,23 +1026,30 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 	for k := range conditionLevel {
 		conditionLevelKeys = append(conditionLevelKeys, k)
 	}
-	conditionLevelIn := "'" + strings.Join(conditionLevelKeys, "','") + "'"
 
 	if startTime.IsZero() {
-		err = db.Select(&conditions,
+		sql, params, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ? AND condition_level IN (?)"+
 				"	ORDER BY `timestamp` DESC LIMIT ?",
-			jiaIsuUUID, endTime, conditionLevelIn, limit,
+			jiaIsuUUID, endTime, conditionLevelKeys, limit,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
+		err = db.Select(&conditions, sql, params...)
 	} else {
-		err = db.Select(&conditions,
+		sql, params, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
 				"	AND ? <= `timestamp` AND condition_level IN (?)"+
 				"	ORDER BY `timestamp` DESC LIMIT ?",
-			jiaIsuUUID, endTime, startTime, conditionLevelIn, limit,
+			jiaIsuUUID, endTime, startTime, conditionLevelKeys, limit,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
+		err = db.Select(&conditions, sql, params...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("db error: %v", err)
