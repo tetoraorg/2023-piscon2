@@ -119,6 +119,17 @@ collation-server      = utf8mb4_general_ci
 # Also available for other users if required.
 # See https://mariadb.com/kb/en/unix_socket-authentication-plugin/
 
+disable-log-bin
+
+innodb_buffer_pool_size=3.5G
+
+innodb_doublewrite = 0
+innodb_flush_log_at_trx_commit = 0
+innodb_flush_log_at_timeout = 3
+
+innodb_log_group_home_dir = /dev/shm
+innodb_redo_log_capacity = 128M
+
 # this is only for embedded server
 [embedded]
 
