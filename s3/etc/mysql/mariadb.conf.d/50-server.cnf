@@ -109,16 +109,6 @@ collation-server      = utf8mb4_general_ci
 #
 # InnoDB is enabled by default with a 10MB datafile in /var/lib/mysql/.
 # Read the manual for more InnoDB related options. There are many!
-
-#
-# * Unix socket authentication plugin is built-in since 10.0.22-6
-#
-# Needed so the root database user can authenticate without a password but
-# only when running as the unix root user.
-#
-# Also available for other users if required.
-# See https://mariadb.com/kb/en/unix_socket-authentication-plugin/
-
 disable-log-bin
 
 innodb_buffer_pool_size=3.5G
@@ -128,8 +118,14 @@ innodb_flush_log_at_trx_commit = 0
 innodb_flush_log_at_timeout = 3
 
 innodb_log_group_home_dir = /dev/shm
-innodb_redo_log_capacity = 128M
-
+#
+# * Unix socket authentication plugin is built-in since 10.0.22-6
+#
+# Needed so the root database user can authenticate without a password but
+# only when running as the unix root user.
+#
+# Also available for other users if required.
+# See https://mariadb.com/kb/en/unix_socket-authentication-plugin/
 # this is only for embedded server
 [embedded]
 
