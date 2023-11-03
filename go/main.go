@@ -59,7 +59,10 @@ var (
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 
 	// cache
-	userMap   = sync.Map{}                                                                  // userの存在確認
+	userMap               = sync.Map{}
+	isuListByCharacterMux = sync.RWMutex{}
+	isuListByCharacter    = map[string][]Isu{}
+	// userの存在確認
 	iconCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) ([]byte, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
 		ids := strings.Split(jiaUserIsuUUID, "*")
 		jiaUserID, jiaIsuUUID := ids[0], ids[1]
@@ -371,6 +374,17 @@ func postInitialize(c echo.Context) error {
 	for _, user := range users {
 		userMap.Store(user.JIAUserID, struct{}{})
 	}
+
+	// init isuListByCharacter
+	isuList := []Isu{}
+	err = db.Select(&isuList, "SELECT * FROM `isu`")
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	isuListByCharacter = lo.GroupBy(isuList, func(isu Isu) string {
+		return isu.Character
+	})
 
 	go func() {
 		if _, err := http.Get("https://ras-pprotein.trap.show/api/group/collect"); err != nil {
@@ -694,6 +708,10 @@ func postIsu(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	isuListByCharacterMux.Lock()
+	isuListByCharacter[isu.Character] = append(isuListByCharacter[isu.Character], isu)
+	isuListByCharacterMux.Unlock()
 
 	return c.JSON(http.StatusCreated, isu)
 }
@@ -1133,18 +1151,10 @@ func calculateConditionLevel(condition string) (string, error) {
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
-	isuList := []Isu{}
-	err := db.Select(&isuList, "SELECT * FROM `isu`")
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	isuListByCharacter := lo.GroupBy(isuList, func(isu Isu) string {
-		return isu.Character
-	})
-
 	res := []TrendResponse{}
+
+	isuListByCharacterMux.RLock()
+	defer isuListByCharacterMux.RUnlock()
 
 	for _, isuList := range isuListByCharacter {
 		character := isuList[0].Character
@@ -1154,7 +1164,7 @@ func getTrend(c echo.Context) error {
 		characterCriticalIsuConditions := []*TrendCondition{}
 		for _, isu := range isuList {
 			conditions := []IsuCondition{}
-			err = db.Select(&conditions,
+			err := db.Select(&conditions,
 				"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? ORDER BY timestamp DESC LIMIT 1",
 				isu.JIAIsuUUID,
 			)
