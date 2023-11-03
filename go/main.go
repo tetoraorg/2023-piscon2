@@ -304,17 +304,19 @@ func main() {
 				if len(postIsuConditionArgs) == 0 {
 					continue
 				}
-				_, err = db.Exec(
-					"INSERT INTO `isu_condition`"+
-						"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-						"	VALUES "+
-						strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
-						"(?, ?, ?, ?, ?)",
-					postIsuConditionArgs...,
-				)
-				if err != nil {
-					panic("db error: " + err.Error())
-				}
+				go func(args []any) {
+					_, err = db.Exec(
+						"INSERT INTO `isu_condition`"+
+							"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+							"	VALUES "+
+							strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
+							"(?, ?, ?, ?, ?)",
+						postIsuConditionArgs...,
+					)
+					if err != nil {
+						panic("db error: " + err.Error())
+					}
+				}(postIsuConditionArgs)
 
 				postIsuConditionArgs = make([]any, 0, 50000)
 			}
