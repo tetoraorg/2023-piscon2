@@ -1,6 +1,6 @@
 #!/bin/sh -eux
 
 cd ~/webapp
-git pull origin main
+git pull origin
 ~/webapp/s1/deploy.sh
 sudo journalctl -u isucondition.go.service -f
