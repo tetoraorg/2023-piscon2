@@ -334,7 +334,7 @@ func postInitialize(c echo.Context) error {
 	users := []struct {
 		JIAUserID string `db:"jia_user_id"`
 	}{}
-	err = db.Get(&users, "SELECT * FROM `user`")
+	err = db.Select(&users, "SELECT * FROM `user`")
 	if err != nil {
 		c.Logger().Errorf("db error : %v", err)
 		return c.NoContent(http.StatusInternalServerError)
