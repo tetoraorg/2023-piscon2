@@ -58,7 +58,7 @@ var (
 	userMap = sync.Map{} // userの存在確認
 
 	postIsuConditionMux  = sync.RWMutex{}
-	postIsuConditionArgs = make([]any, 50000) // 1sごとにpostIsuConditionする
+	postIsuConditionArgs = make([]any, 0, 50000) // 1sごとにpostIsuConditionする
 )
 
 type Config struct {
@@ -374,7 +374,7 @@ func postInitialize(c echo.Context) error {
 			}
 
 			postIsuConditionMux.Lock()
-			postIsuConditionArgs = make([]any, 50000)
+			postIsuConditionArgs = make([]any, 0, 50000)
 			postIsuConditionMux.Unlock()
 		}
 	}()
