@@ -133,7 +133,7 @@ innodb_flush_method = O_DIRECT
 
 innodb_log_file_size=768M
 innodb_log_buffer_size=50MB
-innodb_log_writer_threads = OFF
+# innodb_log_writer_threads = OFF
 
 
 # this is only for embedded server
