@@ -111,7 +111,7 @@ collation-server      = utf8mb4_general_ci
 # Read the manual for more InnoDB related options. There are many!
 disable-log-bin
 
-innodb_buffer_pool_size=3.5G
+innodb_buffer_pool_size=3G
 
 innodb_doublewrite = 0
 innodb_flush_log_at_trx_commit = 0
