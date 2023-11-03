@@ -3,7 +3,7 @@
 set -aux
 
 sudo cp ./etc/nginx/nginx.conf /etc/nginx/nginx.conf
-sudo cp ./etc/mysql/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
+sudo cp ./etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
 
 export PPROTEIN_GIT_REPOSITORY=""
 export GOROOT=""
