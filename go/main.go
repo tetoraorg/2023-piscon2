@@ -1223,7 +1223,9 @@ func postIsuCondition(c echo.Context) error {
 	query, args, err := sqlx.In(
 		"INSERT INTO `isu_condition`"+
 			"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-			"	VALUES (?, ?, ?, ?, ?)",
+			"	VALUES "+
+			strings.Repeat("(?, ?, ?, ?, ?),", len(req)-1)+
+			"(?, ?, ?, ?, ?)",
 		args...,
 	)
 	if err != nil {
