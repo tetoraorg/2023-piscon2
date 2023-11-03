@@ -820,7 +820,7 @@ func generateIsuGraphResponse(db *sqlx.DB, jiaIsuUUID string, graphDate time.Tim
 	startGraphDate := graphDate
 	endGraphDate := graphDate.Add(time.Hour * 24)
 
-	conditions := make([]IsuCondition, 0, 10000)
+	conditions := make([]IsuCondition, 0, 50)
 	err := db.Select(&conditions, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= `timestamp` AND `timestamp` < ? ORDER BY `timestamp` ASC", jiaIsuUUID, startGraphDate, endGraphDate)
 	if err != nil {
 		return nil, fmt.Errorf("db error: %v", err)
