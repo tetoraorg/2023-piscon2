@@ -693,13 +693,13 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	isu, err := isuCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
+	err = tx.Commit()
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	err = tx.Commit()
+	isu, err := isuCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
