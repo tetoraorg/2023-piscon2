@@ -294,6 +294,31 @@ func main() {
 		return
 	}
 
+	go func() {
+		for range time.Tick(500 * time.Millisecond) {
+			postIsuConditionMux.RLock()
+			if len(postIsuConditionArgs) == 0 {
+				continue
+			}
+			_, err = db.Exec(
+				"INSERT INTO `isu_condition`"+
+					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+					"	VALUES "+
+					strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
+					"(?, ?, ?, ?, ?)",
+				postIsuConditionArgs...,
+			)
+			if err != nil {
+				panic("db error: " + err.Error())
+			}
+			postIsuConditionMux.RUnlock()
+
+			postIsuConditionMux.Lock()
+			postIsuConditionArgs = make([]any, 0, 50000)
+			postIsuConditionMux.Unlock()
+		}
+	}()
+
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
 }
@@ -387,31 +412,6 @@ func postInitialize(c echo.Context) error {
 	isuListByCharacter = lo.GroupBy(isuList, func(isu Isu) string {
 		return isu.Character
 	})
-
-	go func() {
-		for range time.Tick(500 * time.Millisecond) {
-			postIsuConditionMux.RLock()
-			if len(postIsuConditionArgs) == 0 {
-				continue
-			}
-			_, err = db.Exec(
-				"INSERT INTO `isu_condition`"+
-					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-					"	VALUES "+
-					strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
-					"(?, ?, ?, ?, ?)",
-				postIsuConditionArgs...,
-			)
-			if err != nil {
-				c.Logger().Errorf("db error: %v", err)
-			}
-			postIsuConditionMux.RUnlock()
-
-			postIsuConditionMux.Lock()
-			postIsuConditionArgs = make([]any, 0, 50000)
-			postIsuConditionMux.Unlock()
-		}
-	}()
 
 	go func() {
 		if _, err := http.Get("https://ras-pprotein.trap.show/api/group/collect"); err != nil {
