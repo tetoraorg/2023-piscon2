@@ -1,0 +1,8 @@
+matching_groups:
+    - ^/api/isu/[0-9a-f-]+$
+    - ^/api/isu/[0-9a-f-]+/icon$
+    - ^/api/isu/[0-9a-f-]+/graph$
+    - ^/api/condition/[0-9a-f-]+$
+    - ^/isu/[0-9a-f-]+$
+    - ^/isu/[0-9a-f-]+/condition$
+    - ^/isu/[0-9a-f-]+/graph$

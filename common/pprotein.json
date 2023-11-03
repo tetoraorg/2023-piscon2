@@ -1,0 +1,56 @@
+[
+  {
+    "Type": "pprof",
+    "Label": "s1",
+    "URL": "http://35.77.82.9/debug/pprof/profile",
+    "Duration": 50
+  },
+  {
+    "Type": "httplog",
+    "Label": "s1",
+    "URL": "http://35.77.82.9/debug/log/httplog",
+    "Duration": 50
+  },
+  {
+    "Type": "slowlog",
+    "Label": "s1",
+    "URL": "http://35.77.82.9/debug/log/slowlog",
+    "Duration": 50
+  },
+  {
+    "Type": "pprof",
+    "Label": "s2",
+    "URL": "http://52.197.33.88/debug/pprof/profile",
+    "Duration": 50
+  },
+  {
+    "Type": "httplog",
+    "Label": "s2",
+    "URL": "http://52.197.33.88/debug/log/httplog",
+    "Duration": 50
+  },
+  {
+    "Type": "slowlog",
+    "Label": "s2",
+    "URL": "http://52.197.33.88/debug/log/slowlog",
+    "Duration": 50
+  },
+  {
+    "Type": "pprof",
+    "Label": "s3",
+    "URL": "http://54.248.46.119/debug/pprof/profile",
+    "Duration": 50
+  },
+  {
+    "Type": "httplog",
+    "Label": "s3",
+    "URL": "http://54.248.46.119/debug/log/httplog",
+    "Duration": 50
+  },
+  {
+    "Type": "slowlog",
+    "Label": "s3",
+    "URL": "http://54.248.46.119/debug/log/slowlog",
+    "Duration": 50
+  }
+]
