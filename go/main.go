@@ -63,19 +63,19 @@ var (
 	isuListByCharacterMux = sync.RWMutex{}
 	isuListByCharacter    = map[string][]Isu{}
 	// userの存在確認
-	iconCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) ([]byte, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
+	isuCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) (Isu, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
 		ids := strings.Split(jiaUserIsuUUID, "*")
 		jiaUserID, jiaIsuUUID := ids[0], ids[1]
 
-		var image []byte
-		if err := db.Get(&image,
-			"SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+		var isu Isu
+		if err := db.Get(&isu,
+			"SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
 			jiaUserID, jiaIsuUUID,
 		); err != nil {
-			return nil, fmt.Errorf("cache db error: %w", err)
+			return Isu{}, fmt.Errorf("cache db error: %w", err)
 		}
 
-		return image, nil
+		return isu, nil
 	}, 2*time.Minute, 10*time.Minute)
 	isuExistCache = sc.NewMust(func(_ context.Context, jiaIsuUUID string) (bool, error) {
 		var count int
@@ -693,11 +693,7 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	var isu Isu
-	err = tx.Get(
-		&isu,
-		"SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
+	isu, err := isuCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -731,9 +727,7 @@ func getIsuID(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	var res Isu
-	err = db.Get(&res, "SELECT * FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
+	isu, err := isuCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusNotFound, "not found: isu")
@@ -743,7 +737,7 @@ func getIsuID(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	return c.JSON(http.StatusOK, res)
+	return c.JSON(http.StatusOK, isu)
 }
 
 // GET /api/isu/:jia_isu_uuid/icon
@@ -761,7 +755,7 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	image, err := iconCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
+	isu, err := isuCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusNotFound, "not found: isu")
@@ -771,7 +765,7 @@ func getIsuIcon(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	return c.Blob(http.StatusOK, "", image)
+	return c.Blob(http.StatusOK, "", isu.Image)
 }
 
 // GET /api/isu/:jia_isu_uuid/graph
