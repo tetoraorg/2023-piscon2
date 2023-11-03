@@ -2,6 +2,7 @@
 
 set -aux
 
+sudo ln -sf ~/webapp/s1/isu /usr/local/bin
 sudo cp ./etc/nginx/nginx.conf /etc/nginx/nginx.conf
 sudo cp ./etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
 
