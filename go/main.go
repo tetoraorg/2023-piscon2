@@ -19,6 +19,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bytedance/sonic/decoder"
+	"github.com/bytedance/sonic/encoder"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
 	"github.com/gorilla/sessions"
@@ -57,7 +59,10 @@ var (
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 
 	// cache
-	userMap   = sync.Map{}                                                                  // userの存在確認
+	userMap               = sync.Map{}
+	isuListByCharacterMux = sync.RWMutex{}
+	isuListByCharacter    = map[string][]Isu{}
+	// userの存在確認
 	iconCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) ([]byte, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
 		ids := strings.Split(jiaUserIsuUUID, "*")
 		jiaUserID, jiaIsuUUID := ids[0], ids[1]
@@ -71,6 +76,13 @@ var (
 		}
 
 		return image, nil
+	}, 2*time.Minute, 10*time.Minute)
+	isuExistCache = sc.NewMust(func(_ context.Context, jiaIsuUUID string) (bool, error) {
+		var count int
+		if err := db.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID); err != nil {
+			return false, fmt.Errorf("cache db error: %w", err)
+		}
+		return count > 0, nil
 	}, 2*time.Minute, 10*time.Minute)
 )
 
@@ -235,6 +247,7 @@ func main() {
 	e.Logger.SetLevel(log.DEBUG)
 
 	echov4.Integrate(e)
+	setupJSONSerializer(e)
 
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
@@ -269,7 +282,8 @@ func main() {
 		e.Logger.Fatalf("failed to connect db: %v", err)
 		return
 	}
-	db.SetMaxOpenConns(10)
+	db.SetMaxOpenConns(1024)
+	db.SetMaxIdleConns(1024)
 	defer db.Close()
 
 	postIsuConditionTargetBaseURL = os.Getenv("POST_ISUCONDITION_TARGET_BASE_URL")
@@ -360,6 +374,17 @@ func postInitialize(c echo.Context) error {
 	for _, user := range users {
 		userMap.Store(user.JIAUserID, struct{}{})
 	}
+
+	// init isuListByCharacter
+	isuList := []Isu{}
+	err = db.Select(&isuList, "SELECT * FROM `isu`")
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	isuListByCharacter = lo.GroupBy(isuList, func(isu Isu) string {
+		return isu.Character
+	})
 
 	go func() {
 		if _, err := http.Get("https://ras-pprotein.trap.show/api/group/collect"); err != nil {
@@ -683,6 +708,10 @@ func postIsu(c echo.Context) error {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
+
+	isuListByCharacterMux.Lock()
+	isuListByCharacter[isu.Character] = append(isuListByCharacter[isu.Character], isu)
+	isuListByCharacterMux.Unlock()
 
 	return c.JSON(http.StatusCreated, isu)
 }
@@ -1122,19 +1151,8 @@ func calculateConditionLevel(condition string) (string, error) {
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
-	isuList := []Isu{}
-	err := db.Select(&isuList, "SELECT * FROM `isu`")
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	isuListByCharacter := lo.GroupBy(isuList, func(isu Isu) string {
-		return isu.Character
-	})
-
 	isuConditions := []IsuCondition{}
-	err = db.Select(&isuConditions,
+	err := db.Select(&isuConditions,
 		// isuごとに最新のコンディションを取得
 		"SELECT * FROM `isu_condition` `c1` WHERE `timestamp` = ("+
 			"	SELECT MAX(`timestamp`) FROM `isu_condition` `c2` WHERE `c1`.`jia_isu_uuid` = `c2`.`jia_isu_uuid`"+
@@ -1150,6 +1168,9 @@ func getTrend(c echo.Context) error {
 	})
 
 	res := []TrendResponse{}
+
+	isuListByCharacterMux.RLock()
+	defer isuListByCharacterMux.RUnlock()
 
 	for _, isuList := range isuListByCharacter {
 		character := isuList[0].Character
@@ -1206,7 +1227,7 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.9
+	dropProbability := 0.5
 	if rand.Float64() <= dropProbability {
 		return c.NoContent(http.StatusAccepted)
 	}
@@ -1224,20 +1245,12 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
-	tx, err := db.Beginx()
+	ok, err := isuExistCache.Get(c.Request().Context(), jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
-	defer tx.Rollback()
-
-	var count int
-	err = tx.Get(&count, "SELECT COUNT(*) FROM `isu` WHERE `jia_isu_uuid` = ?", jiaIsuUUID)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	if count == 0 {
+	if !ok {
 		return c.String(http.StatusNotFound, "not found: isu")
 	}
 
@@ -1252,26 +1265,13 @@ func postIsuCondition(c echo.Context) error {
 		args = append(args, jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
 	}
 
-	query, args, err := sqlx.In(
-		"INSERT INTO `isu_condition`"+
-			"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-			"	VALUES "+
-			strings.Repeat("(?, ?, ?, ?, ?),", len(req)-1)+
-			"(?, ?, ?, ?, ?)",
+	_, err = db.Exec("INSERT INTO `isu_condition`"+
+		"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+		"	VALUES "+
+		strings.Repeat("(?, ?, ?, ?, ?),", len(req)-1)+
+		"(?, ?, ?, ?, ?)",
 		args...,
 	)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	_, err = tx.Exec(query, args...)
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	err = tx.Commit()
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -1316,4 +1316,18 @@ func isValidConditionFormat(conditionStr string) bool {
 
 func getIndex(c echo.Context) error {
 	return c.File(frontendContentsPath + "/index.html")
+}
+
+type sonicJSONSerializer struct{}
+
+func (j *sonicJSONSerializer) Serialize(c echo.Context, i interface{}, _ string) error {
+	return encoder.NewStreamEncoder(c.Response()).Encode(i)
+}
+
+func (j *sonicJSONSerializer) Deserialize(c echo.Context, i interface{}) error {
+	return decoder.NewStreamDecoder(c.Request().Body).Decode(i)
+}
+
+func setupJSONSerializer(e *echo.Echo) {
+	e.JSONSerializer = &sonicJSONSerializer{}
 }

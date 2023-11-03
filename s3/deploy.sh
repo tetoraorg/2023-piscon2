@@ -2,12 +2,15 @@
 
 set -aux
 
+sudo ln -sf ~/webapp/s3/isu /usr/local/bin
 sudo cp ./etc/nginx/nginx.conf /etc/nginx/nginx.conf
 sudo cp ./etc/nginx/isucondition.conf /etc/nginx/sites-available/isucondition.conf
 sudo cp ./etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/50-server.cnf
 sudo cp ./env.sh ../../env.sh
+sudo cp ./etc/sysctl.conf /etc/sysctl.conf
+sudo sysctl -p
 
-export PPROTEIN_GIT_REPOSITORY=""
+export PPROTEIN_GIT_REPOSITORY="/home/isucon/webapp"
 export GOROOT=""
 export GOPROXY=https://proxy.golang.org,direct
 cd ~/webapp/go && go build -o isucondition
