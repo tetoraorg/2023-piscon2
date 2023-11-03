@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	"database/sql"
 	"encoding/json"
@@ -26,6 +27,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
+	"github.com/motoki317/sc"
 	"github.com/samber/lo"
 )
 
@@ -55,7 +57,21 @@ var (
 	postIsuConditionTargetBaseURL string // JIAへのactivate時に登録する，ISUがconditionを送る先のURL
 
 	// cache
-	userMap = sync.Map{} // userの存在確認
+	userMap   = sync.Map{}                                                                  // userの存在確認
+	iconCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) ([]byte, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
+		ids := strings.Split(jiaUserIsuUUID, "*")
+		jiaUserID, jiaIsuUUID := ids[0], ids[1]
+
+		var image []byte
+		if err := db.Get(&image,
+			"SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
+			jiaUserID, jiaIsuUUID,
+		); err != nil {
+			return nil, fmt.Errorf("cache db error: %w", err)
+		}
+
+		return image, nil
+	}, 2*time.Minute, 10*time.Minute)
 )
 
 type Config struct {
@@ -716,9 +732,7 @@ func getIsuIcon(c echo.Context) error {
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 
-	var image []byte
-	err = db.Get(&image, "SELECT `image` FROM `isu` WHERE `jia_user_id` = ? AND `jia_isu_uuid` = ?",
-		jiaUserID, jiaIsuUUID)
+	image, err := iconCache.Get(c.Request().Context(), jiaUserID+"*"+jiaIsuUUID)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return c.String(http.StatusNotFound, "not found: isu")
@@ -1186,7 +1200,7 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.9
+	dropProbability := 0.7
 	if rand.Float64() <= dropProbability {
 		return c.NoContent(http.StatusAccepted)
 	}
