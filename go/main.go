@@ -84,7 +84,7 @@ var (
 		}
 		return count > 0, nil
 	}, 2*time.Minute, 10*time.Minute)
-	postIsuConditionMux  = sync.RWMutex{}
+	postIsuConditionChan = make(chan []any, 1000)
 	postIsuConditionArgs = make([]any, 0, 50000) // 1sごとにpostIsuConditionする
 )
 
@@ -295,27 +295,29 @@ func main() {
 	}
 
 	go func() {
-		for range time.Tick(500 * time.Millisecond) {
-			postIsuConditionMux.RLock()
-			if len(postIsuConditionArgs) == 0 {
-				continue
-			}
-			_, err = db.Exec(
-				"INSERT INTO `isu_condition`"+
-					"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-					"	VALUES "+
-					strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
-					"(?, ?, ?, ?, ?)",
-				postIsuConditionArgs...,
-			)
-			if err != nil {
-				panic("db error: " + err.Error())
-			}
-			postIsuConditionMux.RUnlock()
+		ticker := time.NewTicker(500 * time.Millisecond)
+		for {
+			select {
+			case newArgs := <-postIsuConditionChan:
+				postIsuConditionArgs = append(postIsuConditionArgs, newArgs...)
+			case <-ticker.C:
+				if len(postIsuConditionArgs) == 0 {
+					continue
+				}
+				_, err = db.Exec(
+					"INSERT INTO `isu_condition`"+
+						"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
+						"	VALUES "+
+						strings.Repeat("(?, ?, ?, ?, ?), ", len(postIsuConditionArgs)/5-1)+
+						"(?, ?, ?, ?, ?)",
+					postIsuConditionArgs...,
+				)
+				if err != nil {
+					panic("db error: " + err.Error())
+				}
 
-			postIsuConditionMux.Lock()
-			postIsuConditionArgs = make([]any, 0, 50000)
-			postIsuConditionMux.Unlock()
+				postIsuConditionArgs = make([]any, 0, 50000)
+			}
 		}
 	}()
 
@@ -1263,9 +1265,7 @@ func postIsuCondition(c echo.Context) error {
 		args = append(args, jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
 	}
 
-	postIsuConditionMux.Lock()
-	postIsuConditionArgs = append(postIsuConditionArgs, args...)
-	postIsuConditionMux.Unlock()
+	postIsuConditionChan <- args
 
 	return c.NoContent(http.StatusAccepted)
 }
