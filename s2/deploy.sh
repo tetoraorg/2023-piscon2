@@ -7,6 +7,7 @@ sudo cp ./etc/mysql/mariadb.conf.d/50-server.cnf /etc/mysql/mariadb.conf.d/50-se
 sudo cp ./etc/sysctl.conf /etc/sysctl.conf
 sudo cp ./env.sh ../../env.sh
 sudo cp ./etc/nginx/isucondition.conf /etc/nginx/sites-available/isucondition.conf
+sudo sysctl -p
 
 export PPROTEIN_GIT_REPOSITORY=""
 export GOROOT=""
