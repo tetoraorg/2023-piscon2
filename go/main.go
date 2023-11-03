@@ -90,13 +90,14 @@ type GetIsuListResponse struct {
 }
 
 type IsuCondition struct {
-	ID         int       `db:"id"`
-	JIAIsuUUID string    `db:"jia_isu_uuid"`
-	Timestamp  time.Time `db:"timestamp"`
-	IsSitting  bool      `db:"is_sitting"`
-	Condition  string    `db:"condition"`
-	Message    string    `db:"message"`
-	CreatedAt  time.Time `db:"created_at"`
+	ID             int       `db:"id"`
+	JIAIsuUUID     string    `db:"jia_isu_uuid"`
+	Timestamp      time.Time `db:"timestamp"`
+	IsSitting      bool      `db:"is_sitting"`
+	Condition      string    `db:"condition"`
+	ConditionLevel string    `db:"condition_level"`
+	Message        string    `db:"message"`
+	CreatedAt      time.Time `db:"created_at"`
 }
 
 type MySQLConnectionEnv struct {
@@ -1056,21 +1057,34 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 	conditions := []IsuCondition{}
 	var err error
 
+	conditionLevelKeys := []string{}
+	for k := range conditionLevel {
+		conditionLevelKeys = append(conditionLevelKeys, k)
+	}
+
 	if startTime.IsZero() {
-		err = db.Select(&conditions,
+		sql, params, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
-				"	AND `timestamp` < ?"+
-				"	ORDER BY `timestamp` DESC",
-			jiaIsuUUID, endTime,
+				"	AND `timestamp` < ? AND condition_level IN (?)"+
+				"	ORDER BY `timestamp` DESC LIMIT ?",
+			jiaIsuUUID, endTime, conditionLevelKeys, limit,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
+		err = db.Select(&conditions, sql, params...)
 	} else {
-		err = db.Select(&conditions,
+		sql, params, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
 				"	AND `timestamp` < ?"+
-				"	AND ? <= `timestamp`"+
-				"	ORDER BY `timestamp` DESC",
-			jiaIsuUUID, endTime, startTime,
+				"	AND ? <= `timestamp` AND condition_level IN (?)"+
+				"	ORDER BY `timestamp` DESC LIMIT ?",
+			jiaIsuUUID, endTime, startTime, conditionLevelKeys, limit,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
+		err = db.Select(&conditions, sql, params...)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("db error: %v", err)
