@@ -1136,8 +1136,8 @@ func getTrend(c echo.Context) error {
 	isuConditions := []IsuCondition{}
 	err = db.Select(&isuConditions,
 		// isuごとに最新のコンディションを取得
-		"SELECT * FROM `isu_condition` WHERE `id` IN ("+
-			"	SELECT MAX(`id`) FROM `isu_condition` GROUP BY `jia_isu_uuid`"+
+		"SELECT * FROM `isu_condition` `c1` WHERE `timestamp` = ("+
+			"	SELECT MAX(`timestamp`) FROM `isu_condition` `c2` WHERE `c1`.`jia_isu_uuid` = `c2`.`jia_isu_uuid`"+
 			")",
 	)
 	if err != nil {
