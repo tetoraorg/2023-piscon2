@@ -62,7 +62,6 @@ var (
 
 	// cache
 	userMap               = sync.Map{}
-	latestConditionMapMux = sync.RWMutex{}
 	latestConditionMap    = map[string]IsuCondition{}
 	isuListByCharacterMux = sync.RWMutex{}
 	isuListByCharacter    = map[string][]Isu{}
@@ -307,9 +306,7 @@ func main() {
 				latestCondition := lo.MaxBy(newConditions, func(c, max IsuCondition) bool {
 					return c.Timestamp.After(max.Timestamp)
 				})
-				latestConditionMapMux.Lock()
 				latestConditionMap[latestCondition.JIAIsuUUID] = latestCondition
-				latestConditionMapMux.Unlock()
 			case <-ticker.C:
 				if len(postIsuConditions) == 0 {
 					continue
@@ -1125,9 +1122,6 @@ func getTrendFromDB() (*[]TrendResponse, error) {
 
 	isuListByCharacterMux.RLock()
 	defer isuListByCharacterMux.RUnlock()
-
-	latestConditionMapMux.RLock()
-	defer latestConditionMapMux.RUnlock()
 
 	for _, isuList := range isuListByCharacter {
 		character := isuList[0].Character
