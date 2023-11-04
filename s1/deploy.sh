@@ -26,7 +26,8 @@ sudo chown mysql:mysql /var/log/mysql
 sudo chown mysql:mysql /var/log/mysql/mysql-slow.log
 
 
-sudo systemctl restart mysql.service
+# sudo systemctl restart mysql.service
+sudo systemctl stop mysql.service
 sudo systemctl restart nginx.service
 sudo systemctl restart isucondition.go.service
 
