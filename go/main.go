@@ -819,7 +819,7 @@ func getIsuGraph(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	res, err := generateIsuGraphResponse(db, jiaIsuUUID, date)
+	res, err := graphResponseCache.Get(c.Request().Context(), jiaIsuUUID+"*"+date.Format("2006-01-02"))
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -828,8 +828,17 @@ func getIsuGraph(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+var graphResponseCache = sc.NewMust(generateIsuGraphResponse, 500*time.Millisecond, 5*time.Second)
+
 // グラフのデータ点を一日分生成
-func generateIsuGraphResponse(db *sqlx.DB, jiaIsuUUID string, graphDate time.Time) ([]GraphResponse, error) {
+func generateIsuGraphResponse(_ context.Context, jiaIsuUUIDWithGraphDate string) ([]GraphResponse, error) {
+	ids := strings.Split(jiaIsuUUIDWithGraphDate, "*")
+	jiaIsuUUID, graphDateStr := ids[0], ids[1]
+	graphDate, err := time.Parse("2006-01-02", graphDateStr)
+	if err != nil {
+		return nil, fmt.Errorf("bad format: datetime")
+	}
+
 	dataPoints := []GraphDataPointWithInfo{}
 	conditionsInThisHour := []IsuCondition{}
 	timestampsInThisHour := []int64{}
@@ -839,7 +848,7 @@ func generateIsuGraphResponse(db *sqlx.DB, jiaIsuUUID string, graphDate time.Tim
 	endGraphDate := graphDate.Add(time.Hour * 24)
 
 	conditions := make([]IsuCondition, 0, 50)
-	err := db.Select(&conditions, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= `timestamp` AND `timestamp` < ? ORDER BY `timestamp` ASC", jiaIsuUUID, startGraphDate, endGraphDate)
+	err = db.Select(&conditions, "SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ? AND ? <= `timestamp` AND `timestamp` < ? ORDER BY `timestamp` ASC", jiaIsuUUID, startGraphDate, endGraphDate)
 	if err != nil {
 		return nil, fmt.Errorf("db error: %v", err)
 	}
