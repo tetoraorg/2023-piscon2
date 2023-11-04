@@ -1234,14 +1234,6 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "missing: jia_isu_uuid")
 	}
 
-	req := []PostIsuConditionRequest{}
-	err := decoder.NewStreamDecoder(c.Request().Body).Decode(&req)
-	if err != nil {
-		return c.String(http.StatusBadRequest, "bad request body")
-	} else if len(req) == 0 {
-		return c.String(http.StatusBadRequest, "bad request body")
-	}
-
 	ok, err := isuExistCache.Get(c.Request().Context(), jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
@@ -1249,6 +1241,14 @@ func postIsuCondition(c echo.Context) error {
 	}
 	if !ok {
 		return c.String(http.StatusNotFound, "not found: isu")
+	}
+
+	req := []PostIsuConditionRequest{}
+	err = decoder.NewStreamDecoder(c.Request().Body).Decode(&req)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "bad request body")
+	} else if len(req) == 0 {
+		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
 	args := []interface{}{}
