@@ -564,13 +564,16 @@ type IsuWithLastCondition struct {
 }
 
 var getIsuListResponseCache = sc.NewMust(func(ctx context.Context, jiaUserID string) ([]GetIsuListResponse, error) {
-	isuList := []Isu{}
+	isuList := []IsuWithLastCondition{}
 	err := db.Select(
 		&isuList,
-		"SELECT * "+
-			"FROM `isu`"+
-			"WHERE `jia_user_id` = ? "+
-			"ORDER BY `id` DESC",
+		"SELECT `i`.*, `c`.`timestamp`, `c`.`is_sitting`, `c`.`condition`, `c`.`message` "+
+			"FROM `isu` i "+
+			"LEFT JOIN `isu_condition` c "+
+			"ON `i`.`jia_isu_uuid` = `c`.`jia_isu_uuid` "+
+			"AND `c`.`id` = (SELECT `id` FROM `isu_condition` WHERE `jia_isu_uuid` = `c`.`jia_isu_uuid` ORDER BY `timestamp` DESC LIMIT 1) "+
+			"WHERE `i`.`jia_user_id` = ? "+
+			"ORDER BY `i`.`id` DESC",
 		jiaUserID,
 	)
 	if err != nil {
@@ -580,10 +583,8 @@ var getIsuListResponseCache = sc.NewMust(func(ctx context.Context, jiaUserID str
 	responseList := []GetIsuListResponse{}
 	for _, isu := range isuList {
 		var formattedCondition *GetIsuConditionResponse
-
-		latestCondition, ok := latestConditionMap[isu.JIAIsuUUID]
-		if ok {
-			conditionLevel, err := calculateConditionLevel(latestCondition.Condition)
+		if isu.Timestamp.Valid {
+			conditionLevel, err := calculateConditionLevel(isu.Condition.String)
 			if err != nil {
 				return nil, err
 			}
@@ -591,11 +592,11 @@ var getIsuListResponseCache = sc.NewMust(func(ctx context.Context, jiaUserID str
 			formattedCondition = &GetIsuConditionResponse{
 				JIAIsuUUID:     isu.JIAIsuUUID,
 				IsuName:        isu.Name,
-				Timestamp:      latestCondition.Timestamp.Unix(),
-				IsSitting:      latestCondition.IsSitting,
-				Condition:      latestCondition.Condition,
+				Timestamp:      isu.Timestamp.Time.Unix(),
+				IsSitting:      isu.IsSitting.Bool,
+				Condition:      isu.Condition.String,
 				ConditionLevel: conditionLevel,
-				Message:        latestCondition.Message,
+				Message:        isu.Message.String,
 			}
 		}
 
