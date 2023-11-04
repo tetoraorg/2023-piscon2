@@ -548,13 +548,6 @@ func getIsuList(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
 	type IsuWithLastCondition struct {
 		Isu
 		Timestamp sql.NullTime   `db:"timestamp"`
@@ -564,7 +557,7 @@ func getIsuList(c echo.Context) error {
 	}
 
 	isuList := []IsuWithLastCondition{}
-	err = tx.Select(
+	err = db.Select(
 		&isuList,
 		"SELECT `i`.*, `c`.`timestamp`, `c`.`is_sitting`, `c`.`condition`, `c`.`message` "+
 			"FROM `isu` i "+
@@ -608,12 +601,6 @@ func getIsuList(c echo.Context) error {
 			Character:          isu.Character,
 			LatestIsuCondition: formattedCondition}
 		responseList = append(responseList, res)
-	}
-
-	err = tx.Commit()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
 	}
 
 	return c.JSON(http.StatusOK, responseList)
