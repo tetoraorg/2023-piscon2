@@ -403,6 +403,22 @@ func postInitialize(c echo.Context) error {
 		return isu.Character
 	})
 
+	// init latestConditionMap
+	isuConditions := []IsuCondition{}
+	err = db.Select(&isuConditions,
+		// isuごとに最新のコンディションを取得
+		"SELECT * FROM `isu_condition` `c1` WHERE `timestamp` = ("+
+			"	SELECT MAX(`timestamp`) FROM `isu_condition` `c2` WHERE `c1`.`jia_isu_uuid` = `c2`.`jia_isu_uuid`"+
+			")",
+	)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+	for _, condition := range isuConditions {
+		latestConditionMap[condition.JIAIsuUUID] = condition
+	}
+
 	go func() {
 		if _, err := http.Get("https://ras-pprotein.trap.show/api/group/collect"); err != nil {
 			log.Printf("failed to communicate with pprotein: %v", err)
