@@ -66,6 +66,8 @@ var (
 	latestConditionMap    = map[string]IsuCondition{}
 	isuListByCharacterMux = sync.RWMutex{}
 	isuListByCharacter    = map[string][]Isu{}
+	isuListByUserMux      = sync.RWMutex{}
+	isuListByUser         = map[string][]Isu{}
 	// userの存在確認
 	isuCache = sc.NewMust(func(_ context.Context, jiaUserIsuUUID string) (Isu, error) { // jiaUserIsuUUID=jiaUserID_jiaIsuUUID
 		ids := strings.Split(jiaUserIsuUUID, "*")
@@ -406,6 +408,9 @@ func postInitialize(c echo.Context) error {
 	isuListByCharacter = lo.GroupBy(isuList, func(isu Isu) string {
 		return isu.Character
 	})
+	isuListByUser = lo.GroupBy(isuList, func(isu Isu) string {
+		return isu.JIAUserID
+	})
 
 	// init latestConditionMap
 	isuConditions := []IsuCondition{}
@@ -564,18 +569,9 @@ type IsuWithLastCondition struct {
 }
 
 var getIsuListResponseCache = sc.NewMust(func(ctx context.Context, jiaUserID string) ([]GetIsuListResponse, error) {
-	isuList := []Isu{}
-	err := db.Select(
-		&isuList,
-		"SELECT * "+
-			"FROM `isu`"+
-			"WHERE `jia_user_id` = ? "+
-			"ORDER BY `id` DESC",
-		jiaUserID,
-	)
-	if err != nil {
-		return nil, err
-	}
+	isuListByUserMux.RLock()
+	isuList := isuListByUser[jiaUserID]
+	defer isuListByUserMux.RUnlock()
 
 	responseList := []GetIsuListResponse{}
 	for _, isu := range isuList {
@@ -720,11 +716,29 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	getIsuListResponseCache.Forget(jiaUserID)
+	wg := sync.WaitGroup{}
+	wg.Add(3)
 
-	isuListByCharacterMux.Lock()
-	isuListByCharacter[isu.Character] = append(isuListByCharacter[isu.Character], isu)
-	isuListByCharacterMux.Unlock()
+	go func() {
+		getIsuListResponseCache.Forget(jiaUserID)
+		wg.Done()
+	}()
+
+	go func() {
+		isuListByCharacterMux.Lock()
+		isuListByCharacter[isu.Character] = append(isuListByCharacter[isu.Character], isu)
+		isuListByCharacterMux.Unlock()
+		wg.Done()
+	}()
+
+	go func() {
+		isuListByUserMux.Lock()
+		isuListByUser[jiaUserID] = append(isuListByUser[jiaUserID], isu)
+		isuListByUserMux.Unlock()
+		wg.Done()
+	}()
+
+	wg.Wait()
 
 	return c.JSON(http.StatusCreated, isu)
 }
