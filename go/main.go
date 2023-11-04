@@ -63,7 +63,7 @@ var (
 	// cache
 	userMap               = sync.Map{}
 	latestConditionMapMux = sync.RWMutex{}
-	latestConditionMap    = map[string]PostIsuConditionRequest{}
+	latestConditionMap    = map[string]IsuCondition{}
 	isuListByCharacterMux = sync.RWMutex{}
 	isuListByCharacter    = map[string][]Isu{}
 	// userの存在確認
@@ -88,8 +88,8 @@ var (
 		}
 		return count > 0, nil
 	}, 2*time.Minute, 10*time.Minute)
-	postIsuConditionChan = make(chan []any, 1000)
-	postIsuConditionArgs = make([]any, 0, 50000) // 1sごとにpostIsuConditionする
+	postIsuConditionChan = make(chan []IsuCondition, 1000)
+	postIsuConditions    = make([]IsuCondition, 0, 10000) // 1sごとにpostIsuConditionする
 )
 
 type Config struct {
@@ -303,28 +303,32 @@ func main() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		for {
 			select {
-			case newArgs := <-postIsuConditionChan:
-				postIsuConditionArgs = append(postIsuConditionArgs, newArgs...)
+			case newConditions := <-postIsuConditionChan:
+				postIsuConditions = append(postIsuConditions, newConditions...)
+				latestCondition := lo.MaxBy(newConditions, func(a, b IsuCondition) bool {
+					return a.Timestamp.Before(b.Timestamp)
+				})
+				latestConditionMapMux.Lock()
+				latestConditionMap[latestCondition.JIAIsuUUID] = latestCondition
+				latestConditionMapMux.Unlock()
 			case <-ticker.C:
-				if len(postIsuConditionArgs) == 0 {
+				if len(postIsuConditions) == 0 {
 					continue
 				}
-				go func(args []any) {
-					fmt.Println(len(postIsuConditionArgs))
-					_, err = db.Exec(
+				go func(conditions []IsuCondition) {
+					fmt.Println(len(postIsuConditions))
+					_, err = db.NamedExec(
 						"INSERT INTO `isu_condition`"+
 							"	(`jia_isu_uuid`, `timestamp`, `is_sitting`, `condition`, `message`)"+
-							"	VALUES "+
-							strings.Repeat("(?, ?, ?, ?, ?), ", len(args)/5-1)+
-							"(?, ?, ?, ?, ?)",
-						args...,
+							"	VALUES (:jia_isu_uuid, :timestamp, :is_sitting, :condition, :message)",
+						conditions,
 					)
 					if err != nil {
 						panic("db error: " + err.Error())
 					}
-				}(postIsuConditionArgs)
+				}(postIsuConditions)
 
-				postIsuConditionArgs = make([]any, 0, 50000)
+				postIsuConditions = make([]IsuCondition, 0, 10000)
 			}
 		}
 	}()
@@ -1165,7 +1169,7 @@ func getTrendFromDB() (*[]TrendResponse, error) {
 				}
 				trendCondition := TrendCondition{
 					ID:        isu.ID,
-					Timestamp: isuLastCondition.Timestamp,
+					Timestamp: isuLastCondition.Timestamp.Unix(),
 				}
 				switch conditionLevel {
 				case "info":
@@ -1240,25 +1244,22 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
-	args := []interface{}{}
+	newConditions := make([]IsuCondition, 0, len(req))
 	for _, cond := range req {
-		timestamp := time.Unix(cond.Timestamp, 0)
-
 		if !isValidConditionFormat(cond.Condition) {
 			return c.String(http.StatusBadRequest, "bad request body")
 		}
 
-		args = append(args, jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
+		newConditions = append(newConditions, IsuCondition{
+			JIAIsuUUID: jiaIsuUUID,
+			Timestamp:  time.Unix(cond.Timestamp, 0),
+			IsSitting:  cond.IsSitting,
+			Condition:  cond.Condition,
+			Message:    cond.Message,
+		})
 	}
 
-	latestCondition := lo.MaxBy(req, func(a, b PostIsuConditionRequest) bool {
-		return a.Timestamp < b.Timestamp
-	})
-	latestConditionMapMux.Lock()
-	latestConditionMap[jiaIsuUUID] = latestCondition
-	latestConditionMapMux.Unlock()
-
-	postIsuConditionChan <- args
+	postIsuConditionChan <- newConditions
 
 	return c.NoContent(http.StatusAccepted)
 }
