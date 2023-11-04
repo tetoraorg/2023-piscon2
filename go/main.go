@@ -304,12 +304,6 @@ func main() {
 			select {
 			case newConditions := <-postIsuConditionChan:
 				postIsuConditions = append(postIsuConditions, newConditions...)
-				latestCondition := lo.MaxBy(newConditions, func(c, max IsuCondition) bool {
-					return c.Timestamp.After(max.Timestamp)
-				})
-				latestConditionMapMux.Lock()
-				latestConditionMap[latestCondition.JIAIsuUUID] = latestCondition
-				latestConditionMapMux.Unlock()
 			case <-ticker.C:
 				if len(postIsuConditions) == 0 {
 					continue
@@ -325,6 +319,13 @@ func main() {
 					if err != nil {
 						panic("db error: " + err.Error())
 					}
+
+					latestCondition := lo.MaxBy(conditions, func(c, max IsuCondition) bool {
+						return c.Timestamp.After(max.Timestamp)
+					})
+					latestConditionMapMux.Lock()
+					latestConditionMap[latestCondition.JIAIsuUUID] = latestCondition
+					latestConditionMapMux.Unlock()
 				}(postIsuConditions)
 
 				postIsuConditions = make([]IsuCondition, 0, 10000)
