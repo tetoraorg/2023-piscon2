@@ -62,6 +62,7 @@ var (
 
 	// cache
 	userMap               = sync.Map{}
+	latestConditionMap    = sync.Map{}
 	isuListByCharacterMux = sync.RWMutex{}
 	isuListByCharacter    = map[string][]Isu{}
 	// userの存在確認
@@ -1140,21 +1141,6 @@ func calculateConditionLevel(condition string) (string, error) {
 }
 
 func getTrendFromDB() (*[]TrendResponse, error) {
-	isuConditions := []IsuCondition{}
-	err := db.Select(&isuConditions,
-		// isuごとに最新のコンディションを取得
-		"SELECT * FROM `isu_condition` `c1` WHERE `timestamp` = ("+
-			"	SELECT MAX(`timestamp`) FROM `isu_condition` `c2` WHERE `c1`.`jia_isu_uuid` = `c2`.`jia_isu_uuid`"+
-			")",
-	)
-	if err != nil {
-		return nil, err
-	}
-
-	isuConditionsMap := lo.SliceToMap(isuConditions, func(isuCondition IsuCondition) (string, IsuCondition) {
-		return isuCondition.JIAIsuUUID, isuCondition
-	})
-
 	res := []TrendResponse{}
 
 	isuListByCharacterMux.RLock()
@@ -1167,15 +1153,16 @@ func getTrendFromDB() (*[]TrendResponse, error) {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 		for _, isu := range isuList {
-			isuLastCondition, ok := isuConditionsMap[isu.JIAIsuUUID]
+			_isuLastCondition, ok := latestConditionMap.Load(isu.JIAIsuUUID)
 			if ok {
+				isuLastCondition := _isuLastCondition.(PostIsuConditionRequest)
 				conditionLevel, err := calculateConditionLevel(isuLastCondition.Condition)
 				if err != nil {
 					return nil, err
 				}
 				trendCondition := TrendCondition{
 					ID:        isu.ID,
-					Timestamp: isuLastCondition.Timestamp.Unix(),
+					Timestamp: isuLastCondition.Timestamp,
 				}
 				switch conditionLevel {
 				case "info":
@@ -1260,6 +1247,11 @@ func postIsuCondition(c echo.Context) error {
 
 		args = append(args, jiaIsuUUID, timestamp, cond.IsSitting, cond.Condition, cond.Message)
 	}
+
+	latestCondition := lo.MaxBy(req, func(a, b PostIsuConditionRequest) bool {
+		return a.Timestamp < b.Timestamp
+	})
+	latestConditionMap.Store(jiaIsuUUID, latestCondition)
 
 	postIsuConditionChan <- args
 
