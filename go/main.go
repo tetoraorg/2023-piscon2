@@ -1235,7 +1235,7 @@ func postIsuCondition(c echo.Context) error {
 	}
 
 	req := []PostIsuConditionRequest{}
-	err := c.Bind(&req)
+	err := decoder.NewStreamDecoder(c.Request().Body).Decode(&req)
 	if err != nil {
 		return c.String(http.StatusBadRequest, "bad request body")
 	} else if len(req) == 0 {
