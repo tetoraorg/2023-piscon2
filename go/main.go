@@ -304,8 +304,8 @@ func main() {
 			select {
 			case newConditions := <-postIsuConditionChan:
 				postIsuConditions = append(postIsuConditions, newConditions...)
-				latestCondition := lo.MaxBy(newConditions, func(a, b IsuCondition) bool {
-					return a.Timestamp.Before(b.Timestamp)
+				latestCondition := lo.MaxBy(newConditions, func(c, max IsuCondition) bool {
+					return c.Timestamp.After(max.Timestamp)
 				})
 				latestConditionMapMux.Lock()
 				latestConditionMap[latestCondition.JIAIsuUUID] = latestCondition
