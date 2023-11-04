@@ -573,6 +573,11 @@ var getIsuListResponseCache = sc.NewMust(func(ctx context.Context, jiaUserID str
 	isuList := isuListByUser[jiaUserID]
 	defer isuListByUserMux.RUnlock()
 
+	// id DESC
+	sort.Slice(isuList, func(i, j int) bool {
+		return isuList[i].ID > isuList[j].ID
+	})
+
 	responseList := []GetIsuListResponse{}
 	for _, isu := range isuList {
 		var formattedCondition *GetIsuConditionResponse
