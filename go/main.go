@@ -706,7 +706,7 @@ func postIsu(c echo.Context) error {
 	}
 
 	_, err = db.Exec(
-		"INSERT INTO `isu`	(`jia_isu_uuid`, `name`, `image`, `charactrer`, `jia_user_id`) VALUES (?, ?, ?, ?, ?)",
+		"INSERT INTO `isu`	(`jia_isu_uuid`, `name`, `image`, `character`, `jia_user_id`) VALUES (?, ?, ?, ?, ?)",
 		jiaIsuUUID, isuName, image, isuFromJIA.Character, jiaUserID,
 	)
 	if err != nil {
