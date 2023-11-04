@@ -723,6 +723,8 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	getIsuListResponseCache.Forget(jiaUserID)
+
 	isuListByCharacterMux.Lock()
 	isuListByCharacter[isu.Character] = append(isuListByCharacter[isu.Character], isu)
 	isuListByCharacterMux.Unlock()
