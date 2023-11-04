@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -23,7 +22,6 @@ import (
 	"github.com/bytedance/sonic/encoder"
 	"github.com/dgrijalva/jwt-go"
 	"github.com/go-sql-driver/mysql"
-	"github.com/gorilla/sessions"
 	"github.com/jmoiron/sqlx"
 	"github.com/kaz/pprotein/integration/echov4"
 	"github.com/labstack/echo/v4"
@@ -51,7 +49,6 @@ const (
 
 var (
 	db                  *sqlx.DB
-	sessionStore        sessions.Store
 	mySQLConnectionData *MySQLConnectionEnv
 
 	jiaJWTSigningKey *ecdsa.PublicKey
@@ -234,8 +231,6 @@ func (mc *MySQLConnectionEnv) ConnectDB() (*sqlx.DB, error) {
 }
 
 func init() {
-	sessionStore = sessions.NewCookieStore([]byte(getEnv("SESSION_KEY", "isucondition")))
-
 	key, err := ioutil.ReadFile(jiaJWTSigningKeyPath)
 	if err != nil {
 		log.Fatalf("failed to read file: %v", err)
@@ -336,12 +331,56 @@ func main() {
 	e.Logger.Fatal(e.Start(serverPort))
 }
 
-func getSession(r *http.Request) (*sessions.Session, error) {
-	session, err := sessionStore.Get(r, sessionName)
+var (
+	sessionMap         = sync.Map{}
+	errSessionNotFound = errors.New("session not found")
+)
+
+func getSession(r *http.Request) (map[string]any, error) {
+	c, err := r.Cookie(sessionName)
 	if err != nil {
 		return nil, err
 	}
-	return session, nil
+
+	s, ok := sessionMap.Load(c.Value)
+	if !ok {
+		return nil, errSessionNotFound
+	}
+
+	return s.(map[string]any), nil
+}
+
+func saveSession(r *http.Request, w http.ResponseWriter, session map[string]any) error {
+	c, err := r.Cookie(sessionName)
+	if errors.Is(err, http.ErrNoCookie) {
+		c = &http.Cookie{
+			Name:     sessionName,
+			Value:    fmt.Sprintf("%v", time.Now().UnixNano()),
+			Path:     "/",
+			HttpOnly: true,
+		}
+		http.SetCookie(w, c)
+	} else if err != nil {
+		return err
+	}
+
+	sessionMap.Store(c.Value, session)
+
+	return nil
+}
+
+func revokeSession(r *http.Request, w http.ResponseWriter) error {
+	c, err := r.Cookie(sessionName)
+	if err != nil {
+		return err
+	}
+
+	sessionMap.Delete(c.Value)
+
+	c.MaxAge = -1
+	http.SetCookie(w, c)
+
+	return nil
 }
 
 func getUserIDFromSession(c echo.Context) (string, int, error) {
@@ -349,7 +388,7 @@ func getUserIDFromSession(c echo.Context) (string, int, error) {
 	if err != nil {
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
 	}
-	_jiaUserID, ok := session.Values["jia_user_id"]
+	_jiaUserID, ok := session["jia_user_id"]
 	if !ok {
 		return "", http.StatusUnauthorized, fmt.Errorf("no session")
 	}
@@ -476,8 +515,8 @@ func postAuthentication(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	session.Values["jia_user_id"] = jiaUserID
-	err = session.Save(c.Request(), c.Response())
+	session["jia_user_id"] = jiaUserID
+	err = saveSession(c.Request(), c.Response(), session)
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -499,14 +538,7 @@ func postSignout(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	session, err := getSession(c.Request())
-	if err != nil {
-		c.Logger().Error(err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
-	session.Options = &sessions.Options{MaxAge: -1, Path: "/"}
-	err = session.Save(c.Request(), c.Response())
+	err = revokeSession(c.Request(), c.Response())
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
