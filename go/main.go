@@ -1221,9 +1221,9 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	if dropProbability := 0.0; rand.Float64() <= dropProbability {
-		return c.NoContent(http.StatusAccepted)
-	}
+	// if dropProbability := 0.0; rand.Float64() <= dropProbability {
+	// 	return c.NoContent(http.StatusAccepted)
+	// }
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
