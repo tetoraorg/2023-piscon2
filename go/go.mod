@@ -6,7 +6,6 @@ require (
 	github.com/bytedance/sonic v1.10.2
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/go-sql-driver/mysql v1.6.0
-	github.com/gorilla/sessions v1.2.1
 	github.com/jmoiron/sqlx v1.3.4
 	github.com/kaz/pprotein v1.1.0
 	github.com/labstack/echo/v4 v4.7.2
@@ -30,7 +29,6 @@ require (
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
 	github.com/google/pprof v0.0.0-20220608213341-c488b8fa1db3 // indirect
 	github.com/gorilla/mux v1.8.0 // indirect
-	github.com/gorilla/securecookie v1.1.1 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/jbenet/go-context v0.0.0-20150711004518-d14ea06fba99 // indirect
 	github.com/kevinburke/ssh_config v0.0.0-20201106050909-4977a11b4351 // indirect
