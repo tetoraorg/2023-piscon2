@@ -336,9 +336,17 @@ var (
 	errSessionNotFound = errors.New("session not found")
 )
 
-func getSession(r *http.Request) (map[string]any, error) {
+func getSession(r *http.Request, w http.ResponseWriter) (map[string]any, error) {
 	c, err := r.Cookie(sessionName)
-	if err != nil {
+	if errors.Is(err, http.ErrNoCookie) {
+		c = &http.Cookie{
+			Name:     sessionName,
+			Value:    fmt.Sprintf("%v", time.Now().UnixNano()),
+			Path:     "/",
+			HttpOnly: true,
+		}
+		http.SetCookie(w, c)
+	} else if err != nil {
 		return nil, err
 	}
 
@@ -352,15 +360,7 @@ func getSession(r *http.Request) (map[string]any, error) {
 
 func saveSession(r *http.Request, w http.ResponseWriter, session map[string]any) error {
 	c, err := r.Cookie(sessionName)
-	if errors.Is(err, http.ErrNoCookie) {
-		c = &http.Cookie{
-			Name:     sessionName,
-			Value:    fmt.Sprintf("%v", time.Now().UnixNano()),
-			Path:     "/",
-			HttpOnly: true,
-		}
-		http.SetCookie(w, c)
-	} else if err != nil {
+	if err != nil {
 		return err
 	}
 
@@ -384,7 +384,7 @@ func revokeSession(r *http.Request, w http.ResponseWriter) error {
 }
 
 func getUserIDFromSession(c echo.Context) (string, int, error) {
-	session, err := getSession(c.Request())
+	session, err := getSession(c.Request(), c.Response())
 	if err != nil {
 		return "", http.StatusInternalServerError, fmt.Errorf("failed to get session: %v", err)
 	}
@@ -509,7 +509,7 @@ func postAuthentication(c echo.Context) error {
 
 	userMap.Store(jiaUserID, struct{}{})
 
-	session, err := getSession(c.Request())
+	session, err := getSession(c.Request(), c.Response())
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
