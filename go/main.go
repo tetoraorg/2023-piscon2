@@ -665,27 +665,6 @@ func postIsu(c echo.Context) error {
 		}
 	}
 
-	tx, err := db.Beginx()
-	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-	defer tx.Rollback()
-
-	_, err = tx.Exec("INSERT INTO `isu`"+
-		"	(`jia_isu_uuid`, `name`, `image`, `jia_user_id`) VALUES (?, ?, ?, ?)",
-		jiaIsuUUID, isuName, image, jiaUserID)
-	if err != nil {
-		mysqlErr, ok := err.(*mysql.MySQLError)
-
-		if ok && mysqlErr.Number == uint16(mysqlErrNumDuplicateEntry) {
-			return c.String(http.StatusConflict, "duplicated: isu")
-		}
-
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
-
 	targetURL := jiaServiceURL + "/api/activate"
 	body := JIAServiceRequest{postIsuConditionTargetBaseURL, jiaIsuUUID}
 	bodyJSON, err := sonic.Marshal(body)
@@ -726,14 +705,17 @@ func postIsu(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	_, err = tx.Exec("UPDATE `isu` SET `character` = ? WHERE  `jia_isu_uuid` = ?", isuFromJIA.Character, jiaIsuUUID)
+	_, err = db.Exec(
+		"INSERT INTO `isu`	(`jia_isu_uuid`, `name`, `image`, `charactrer`, `jia_user_id`) VALUES (?, ?, ?, ?, ?)",
+		jiaIsuUUID, isuName, image, isuFromJIA.Character, jiaUserID,
+	)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
-	}
+		mysqlErr, ok := err.(*mysql.MySQLError)
 
-	err = tx.Commit()
-	if err != nil {
+		if ok && mysqlErr.Number == uint16(mysqlErrNumDuplicateEntry) {
+			return c.String(http.StatusConflict, "duplicated: isu")
+		}
+
 		c.Logger().Errorf("db error: %v", err)
 		return c.NoContent(http.StatusInternalServerError)
 	}
