@@ -548,16 +548,26 @@ func getIsuList(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	type IsuWithLastCondition struct {
-		Isu
-		Timestamp sql.NullTime   `db:"timestamp"`
-		IsSitting sql.NullBool   `db:"is_sitting"`
-		Condition sql.NullString `db:"condition"`
-		Message   sql.NullString `db:"message"`
+	responseList, err := getIsuListResponseCache.Get(c.Request().Context(), jiaUserID)
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
 	}
 
+	return c.JSON(http.StatusOK, responseList)
+}
+
+type IsuWithLastCondition struct {
+	Isu
+	Timestamp sql.NullTime   `db:"timestamp"`
+	IsSitting sql.NullBool   `db:"is_sitting"`
+	Condition sql.NullString `db:"condition"`
+	Message   sql.NullString `db:"message"`
+}
+
+var getIsuListResponseCache = sc.NewMust(func(ctx context.Context, jiaUserID string) ([]GetIsuListResponse, error) {
 	isuList := []IsuWithLastCondition{}
-	err = db.Select(
+	err := db.Select(
 		&isuList,
 		"SELECT `i`.*, `c`.`timestamp`, `c`.`is_sitting`, `c`.`condition`, `c`.`message` "+
 			"FROM `isu` i "+
@@ -569,8 +579,7 @@ func getIsuList(c echo.Context) error {
 		jiaUserID,
 	)
 	if err != nil {
-		c.Logger().Errorf("db error: %v", err)
-		return c.NoContent(http.StatusInternalServerError)
+		return nil, err
 	}
 
 	responseList := []GetIsuListResponse{}
@@ -579,8 +588,7 @@ func getIsuList(c echo.Context) error {
 		if isu.Timestamp.Valid {
 			conditionLevel, err := calculateConditionLevel(isu.Condition.String)
 			if err != nil {
-				c.Logger().Error(err)
-				return c.NoContent(http.StatusInternalServerError)
+				return nil, err
 			}
 
 			formattedCondition = &GetIsuConditionResponse{
@@ -603,8 +611,8 @@ func getIsuList(c echo.Context) error {
 		responseList = append(responseList, res)
 	}
 
-	return c.JSON(http.StatusOK, responseList)
-}
+	return responseList, nil
+}, 500*time.Millisecond, 5*time.Second)
 
 // POST /api/isu
 // ISUを登録
