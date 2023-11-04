@@ -1,6 +1,6 @@
 #!/bin/bash
 
-set -aux
+set -eux
 
 sudo ln -sf ~/webapp/s3/isu /usr/local/bin
 sudo cp ./etc/nginx/nginx.conf /etc/nginx/nginx.conf

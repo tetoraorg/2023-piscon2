@@ -1226,7 +1226,7 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.2
+	dropProbability := 0.0
 	if rand.Float64() <= dropProbability {
 		return c.NoContent(http.StatusAccepted)
 	}
@@ -1236,14 +1236,6 @@ func postIsuCondition(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "missing: jia_isu_uuid")
 	}
 
-	req := []PostIsuConditionRequest{}
-	err := c.Bind(&req)
-	if err != nil {
-		return c.String(http.StatusBadRequest, "bad request body")
-	} else if len(req) == 0 {
-		return c.String(http.StatusBadRequest, "bad request body")
-	}
-
 	ok, err := isuExistCache.Get(c.Request().Context(), jiaIsuUUID)
 	if err != nil {
 		c.Logger().Errorf("db error: %v", err)
@@ -1251,6 +1243,14 @@ func postIsuCondition(c echo.Context) error {
 	}
 	if !ok {
 		return c.String(http.StatusNotFound, "not found: isu")
+	}
+
+	req := []PostIsuConditionRequest{}
+	err = decoder.NewStreamDecoder(c.Request().Body).Decode(&req)
+	if err != nil {
+		return c.String(http.StatusBadRequest, "bad request body")
+	} else if len(req) == 0 {
+		return c.String(http.StatusBadRequest, "bad request body")
 	}
 
 	args := []interface{}{}
