@@ -212,8 +212,7 @@ type JIAServiceRequest struct {
 }
 
 func getEnv(key string, defaultValue string) string {
-	val := os.Getenv(key)
-	if val != "" {
+	if val := os.Getenv(key); val != "" {
 		return val
 	}
 	return defaultValue
@@ -957,7 +956,7 @@ func calculateGraphDataPoint(isuConditions []IsuCondition) (GraphDataPoint, erro
 
 			conditionName := keyValue[0]
 			if keyValue[1] == "true" {
-				conditionsCount[conditionName] += 1
+				conditionsCount[conditionName]++
 				badConditionsCount++
 			}
 		}
@@ -1062,9 +1061,7 @@ func getIsuConditions(c echo.Context) error {
 // ISUのコンディションをDBから取得
 func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, conditionLevel map[string]interface{}, startTime time.Time,
 	limit int, isuName string) ([]*GetIsuConditionResponse, error) {
-
 	conditions := []IsuCondition{}
-	var err error
 
 	conditionLevelKeys := []string{}
 	for k := range conditionLevel {
@@ -1082,6 +1079,9 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 			return nil, fmt.Errorf("db error: %v", err)
 		}
 		err = db.Select(&conditions, sql, params...)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
 	} else {
 		sql, params, err := sqlx.In(
 			"SELECT * FROM `isu_condition` WHERE `jia_isu_uuid` = ?"+
@@ -1094,9 +1094,9 @@ func getIsuConditionsFromDB(db *sqlx.DB, jiaIsuUUID string, endTime time.Time, c
 			return nil, fmt.Errorf("db error: %v", err)
 		}
 		err = db.Select(&conditions, sql, params...)
-	}
-	if err != nil {
-		return nil, fmt.Errorf("db error: %v", err)
+		if err != nil {
+			return nil, fmt.Errorf("db error: %v", err)
+		}
 	}
 
 	conditionsResponse := []*GetIsuConditionResponse{}
