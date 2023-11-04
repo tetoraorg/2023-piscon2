@@ -819,7 +819,7 @@ func getIsuGraph(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 
-	res, err := graphResponseCache.Get(c.Request().Context(), jiaIsuUUID+"*"+date.Format("2006-01-02"))
+	res, err := graphResponseCache.Get(c.Request().Context(), jiaIsuUUID+"*"+date.Format("2006-01-02 15:04:05"))
 	if err != nil {
 		c.Logger().Error(err)
 		return c.NoContent(http.StatusInternalServerError)
@@ -834,7 +834,7 @@ var graphResponseCache = sc.NewMust(generateIsuGraphResponse, 500*time.Milliseco
 func generateIsuGraphResponse(_ context.Context, jiaIsuUUIDWithGraphDate string) ([]GraphResponse, error) {
 	ids := strings.Split(jiaIsuUUIDWithGraphDate, "*")
 	jiaIsuUUID, graphDateStr := ids[0], ids[1]
-	graphDate, err := time.Parse("2006-01-02", graphDateStr)
+	graphDate, err := time.Parse("2006-01-02 15:04:05", graphDateStr)
 	if err != nil {
 		return nil, fmt.Errorf("bad format: datetime")
 	}
