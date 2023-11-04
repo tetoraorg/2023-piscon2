@@ -298,7 +298,6 @@ func main() {
 		return
 	}
 
-	go trendUpdateWorker()
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		for {
@@ -335,30 +334,6 @@ func main() {
 
 	serverPort := fmt.Sprintf(":%v", getEnv("SERVER_APP_PORT", "3000"))
 	e.Logger.Fatal(e.Start(serverPort))
-}
-
-var (
-	trendCache    = []TrendResponse{}
-	trendCacheMux = sync.RWMutex{}
-)
-
-func trendUpdateWorker() {
-	ticker := time.NewTicker(100 * time.Millisecond)
-	for {
-		select {
-		case <-ticker.C:
-			trendCacheMux.Lock()
-			trend, err := getTrendFromDB()
-			if err != nil {
-				// ここのエラーってどこに投げればいいんだ？
-				fmt.Println(err)
-				trendCacheMux.Unlock()
-				continue
-			}
-			trendCache = *trend
-			trendCacheMux.Unlock()
-		}
-	}
 }
 
 func getSession(r *http.Request) (*sessions.Session, error) {
@@ -1207,9 +1182,12 @@ func getTrendFromDB() (*[]TrendResponse, error) {
 // GET /api/trend
 // ISUの性格毎の最新のコンディション情報
 func getTrend(c echo.Context) error {
-	trendCacheMux.RLock()
-	res := trendCache
-	trendCacheMux.RUnlock()
+	res, err := getTrendFromDB()
+	if err != nil {
+		c.Logger().Errorf("db error: %v", err)
+		return c.NoContent(http.StatusInternalServerError)
+	}
+
 	return c.JSON(http.StatusOK, res)
 }
 
