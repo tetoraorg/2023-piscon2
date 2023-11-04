@@ -1221,14 +1221,13 @@ func getTrend(c echo.Context) error {
 // ISUからのコンディションを受け取る
 func postIsuCondition(c echo.Context) error {
 	// TODO: 一定割合リクエストを落としてしのぐようにしたが、本来は全量さばけるようにすべき
-	dropProbability := 0.0
-	if rand.Float64() <= dropProbability {
+	if dropProbability := 0.0; rand.Float64() <= dropProbability {
 		return c.NoContent(http.StatusAccepted)
 	}
 
 	jiaIsuUUID := c.Param("jia_isu_uuid")
 	if jiaIsuUUID == "" {
-		return c.String(http.StatusBadRequest, "missing: jia_isu_uuid")
+		return c.NoContent(http.StatusBadRequest)
 	}
 
 	ok, err := isuExistCache.Get(c.Request().Context(), jiaIsuUUID)
@@ -1237,21 +1236,21 @@ func postIsuCondition(c echo.Context) error {
 		return c.NoContent(http.StatusInternalServerError)
 	}
 	if !ok {
-		return c.String(http.StatusNotFound, "not found: isu")
+		return c.NoContent(http.StatusNotFound)
 	}
 
 	req := []PostIsuConditionRequest{}
 	err = decoder.NewStreamDecoder(c.Request().Body).Decode(&req)
 	if err != nil {
-		return c.String(http.StatusBadRequest, "bad request body")
+		return c.NoContent(http.StatusBadRequest)
 	} else if len(req) == 0 {
-		return c.String(http.StatusBadRequest, "bad request body")
+		return c.NoContent(http.StatusBadRequest)
 	}
 
 	newConditions := make([]IsuCondition, 0, len(req))
 	for _, cond := range req {
 		if !isValidConditionFormat(cond.Condition) {
-			return c.String(http.StatusBadRequest, "bad request body")
+			return c.NoContent(http.StatusBadRequest)
 		}
 
 		newConditions = append(newConditions, IsuCondition{
