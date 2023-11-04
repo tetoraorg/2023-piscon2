@@ -62,7 +62,8 @@ var (
 
 	// cache
 	userMap               = sync.Map{}
-	latestConditionMap    = sync.Map{}
+	latestConditionMapMux = sync.RWMutex{}
+	latestConditionMap    = map[string]PostIsuConditionRequest{}
 	isuListByCharacterMux = sync.RWMutex{}
 	isuListByCharacter    = map[string][]Isu{}
 	// userの存在確認
@@ -1146,6 +1147,9 @@ func getTrendFromDB() (*[]TrendResponse, error) {
 	isuListByCharacterMux.RLock()
 	defer isuListByCharacterMux.RUnlock()
 
+	latestConditionMapMux.RLock()
+	defer latestConditionMapMux.RUnlock()
+
 	for _, isuList := range isuListByCharacter {
 		character := isuList[0].Character
 
@@ -1153,9 +1157,8 @@ func getTrendFromDB() (*[]TrendResponse, error) {
 		characterWarningIsuConditions := []*TrendCondition{}
 		characterCriticalIsuConditions := []*TrendCondition{}
 		for _, isu := range isuList {
-			_isuLastCondition, ok := latestConditionMap.Load(isu.JIAIsuUUID)
+			isuLastCondition, ok := latestConditionMap[isu.JIAIsuUUID]
 			if ok {
-				isuLastCondition := _isuLastCondition.(PostIsuConditionRequest)
 				conditionLevel, err := calculateConditionLevel(isuLastCondition.Condition)
 				if err != nil {
 					return nil, err
@@ -1251,7 +1254,9 @@ func postIsuCondition(c echo.Context) error {
 	latestCondition := lo.MaxBy(req, func(a, b PostIsuConditionRequest) bool {
 		return a.Timestamp < b.Timestamp
 	})
-	latestConditionMap.Store(jiaIsuUUID, latestCondition)
+	latestConditionMapMux.Lock()
+	latestConditionMap[jiaIsuUUID] = latestCondition
+	latestConditionMapMux.Unlock()
 
 	postIsuConditionChan <- args
 
