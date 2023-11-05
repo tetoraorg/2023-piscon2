@@ -247,13 +247,10 @@ func init() {
 
 func main() {
 	e := echo.New()
-	e.Debug = true
-	e.Logger.SetLevel(log.DEBUG)
 
-	echov4.Integrate(e)
+	echov4.EnableDebugHandler(e)
 	setupJSONSerializer(e)
 
-	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	e.POST("/initialize", postInitialize)
