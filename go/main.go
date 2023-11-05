@@ -346,11 +346,6 @@ func getSession(r *http.Request, w http.ResponseWriter) (map[string]any, error) 
 			HttpOnly: true,
 		}
 		http.SetCookie(w, c)
-
-		newmap := map[string]any{}
-		sessionMap.Store(c.Value, newmap)
-
-		return newmap, nil
 	} else if err != nil {
 		return nil, err
 	}
